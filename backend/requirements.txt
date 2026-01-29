@@ -1,0 +1,40 @@
+# ReportLift Backend Dependencies
+
+# Web Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+pyodbc>=5.0.0
+
+# Validation & Settings
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6
+requests-ntlm>=1.2.0
+requests>=2.31.0
+
+# HTTP Client (for SSRS)
+httpx>=0.26.0
+
+# XML Parsing
+lxml>=5.0.0
+
+# SQL Parsing and Formatting
+sqlparse>=0.5.0
+
+# Snowflake
+snowflake-connector-python>=3.6.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+
+# Code Quality
+ruff>=0.1.0

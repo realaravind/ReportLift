@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(bmad:bmm:workflows:create-architecture)",
+      "Skill(bmad:bmm:workflows:create-epics-and-stories)",
+      "Skill(bmad:bmm:workflows:sprint-planning)",
+      "Skill(bmad:bmm:workflows:create-story)",
+      "Bash(find:*)",
+      "Bash(docker-compose:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(docker compose:*)",
+      "Bash(npm install)",
+      "Bash(npm run lint)",
+      "Bash(cd /Users/aravind/sourcecode/projects/reportlift/frontend && npm run build:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJURVNURE9NXFx0ZXN0dXNlciIsImRvbWFpbiI6IlRFU1RET00iLCJ1c2VybmFtZSI6InRlc3R1c2VyIiwiaWF0IjoxNzY5MDQzMTY2LCJleHAiOjE3NjkwNzE5NjZ9.l2wm-hKkhFbK8isJ5bmrl23KuBoLmWgoqYIxzcXHi3E\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJURVNURE9NXFx0ZXN0dXNlciIsImRvbWFpbiI6IlRFU1RET00iLCJ1c2VybmFtZSI6InRlc3R1c2VyIiwiaWF0IjoxNzY5MDQzMTY2LCJleHAiOjE3NjkwNzE5NjZ9.l2wm-hKkhFbK8isJ5bmrl23KuBoLmWgoqYIxzcXHi3E\" curl -s http://localhost:8501/api/v1/auth/me -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(chmod:*)",
+      "Bash(python -m pytest tests/test_oauth.py -v)",
+      "Bash(pip3 install:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(/Users/aravind/sourcecode/projects/reportlift/backend/.venv/bin/python -m pytest:*)",
+      "Bash(npx tsc:*)",
+      "Bash(python:*)",
+      "Skill(bmad:bmm:workflows:retrospective)",
+      "Bash(lsof:*)",
+      "Bash(pip install:*)",
+      "Bash(npx vite --port 3000 --host)",
+      "Bash(git add:*)"
+    ]
+  }
+}
