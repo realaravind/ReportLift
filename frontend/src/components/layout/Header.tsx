@@ -3,7 +3,7 @@
  */
 
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Menu, Settings, User, LogOut } from 'lucide-react'
+import { Menu, Settings, User, LogOut, Upload, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -31,6 +31,8 @@ export function Header() {
   const { user, logout } = useAuthStore()
   const { disconnectedCount } = useHealthStore()
 
+  const isHomeActive = location.pathname === '/'
+  const isUploadActive = location.pathname === '/upload'
   const isSettingsActive = location.pathname === '/settings'
   const hasWarning = disconnectedCount > 0
 
@@ -59,9 +61,46 @@ export function Header() {
           </div>
         </div>
 
-        {/* Right section - Settings and User */}
+        {/* Right section - Navigation, Settings and User */}
         <div className="flex items-center gap-2">
           <TooltipProvider>
+            {/* Home/Browse SSRS button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Browse SSRS"
+                  onClick={() => navigate('/')}
+                  className={cn(isHomeActive && 'bg-accent')}
+                >
+                  <Home className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Browse SSRS Reports</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Upload RDL button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Upload RDL"
+                  onClick={() => navigate('/upload')}
+                  className={cn(isUploadActive && 'bg-accent')}
+                >
+                  <Upload className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Upload RDL File</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Settings button */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

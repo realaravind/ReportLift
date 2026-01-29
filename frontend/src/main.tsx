@@ -10,6 +10,7 @@ import { OAuthError } from './pages/OAuthError'
 import { AnalysisResults } from './pages/AnalysisResults'
 import { ConversionSummary } from './pages/ConversionSummary'
 import { AuditLogs } from './pages/AuditLogs'
+import { UploadPage } from './pages/Upload'
 import { ProtectedRoute } from './components/auth'
 import { BaseLayout } from './components/layout'
 import { Toaster } from './components/ui/sonner'
@@ -64,6 +65,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <ProtectedRoute>
                 <BaseLayout>
                   <AuditLogs />
+                </BaseLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/upload"
+            element={
+              <ProtectedRoute>
+                <BaseLayout>
+                  <UploadPage />
                 </BaseLayout>
               </ProtectedRoute>
             }

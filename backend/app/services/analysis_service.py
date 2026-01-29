@@ -500,6 +500,179 @@ def _generate_todo_items(
     return todos
 
 
+def analyze_uploaded_rdl(
+    db: Session,
+    rdl_content: str,
+    report_name: str,
+    user_id: int | None = None,
+    task: AnalysisTask | None = None,
+) -> AnalysisResult:
+    """Analyze an uploaded RDL file directly.
+
+    Args:
+        db: Database session
+        rdl_content: The RDL XML content
+        report_name: Display name of the report
+        user_id: ID of the user triggering the analysis
+        task: Optional AnalysisTask to update with progress
+
+    Returns:
+        AnalysisResult with analysis data or error
+    """
+    start_time = time.time()
+    report_path = f"uploaded/{report_name}"
+
+    try:
+        # Update task progress: Parsing
+        if task:
+            update_task_progress(db, task, "running", 30, "Parsing report definition")
+
+        # Parse RDL and extract features using comprehensive parser
+        features, analysis_features = _parse_rdl_with_new_parser(rdl_content)
+
+        # Log parsed features summary
+        if analysis_features:
+            logger.info(
+                "Parsed uploaded RDL version %s: %d datasets, %d visuals, %d expressions",
+                analysis_features.rdl_version,
+                analysis_features.dataset_count,
+                analysis_features.visual_count,
+                analysis_features.expression_count,
+            )
+
+        # Update task progress: Analyzing
+        if task:
+            update_task_progress(db, task, "running", 60, "Analyzing report complexity")
+
+        # Use new classification and scoring engine when features available
+        classification_result: ClassificationResult | None = None
+        if analysis_features:
+            classification_result = run_classification_and_scoring(analysis_features)
+            classification = classification_result.classification.value
+            score = classification_result.score
+            status = classification_result.status.value
+            # Convert breakdown to dict for storage
+            penalties = classification_result.breakdown.model_dump()
+        else:
+            # Fallback to legacy scoring
+            score, status, penalties = _calculate_score(features)
+            classification = _classify_report(features)
+
+        # Update task progress: Generating recommendations
+        if task:
+            update_task_progress(db, task, "running", 80, "Generating conversion recommendations")
+
+        # Generate todo items
+        todo_items = _generate_todo_items(features, penalties if not classification_result else features)
+
+        # Calculate duration
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Store analysis in database
+        analysis = Analysis(
+            report_path=report_path,
+            report_name=report_name,
+            report_id=None,  # No SSRS report ID for uploaded files
+            classification=classification,
+            score=score,
+            status=status,
+            features=features,
+            penalties=penalties,
+            todo_items=todo_items,
+            rdl_content=rdl_content,
+            analysis_duration_ms=duration_ms,
+            created_by_id=user_id,
+        )
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+
+        # Update task with completion
+        if task:
+            task.analysis_id = analysis.id
+            update_task_progress(db, task, "completed", 100, "Analysis complete")
+
+        logger.info(
+            "Completed analysis for uploaded %s: score=%d, classification=%s, duration=%dms",
+            report_name, score, classification, duration_ms
+        )
+
+        # Log successful analysis to audit trail (non-blocking)
+        try:
+            audit_service = get_audit_service()
+            audit_service.log_event_sync(
+                db=db,
+                event_type=EventType.ANALYSIS,
+                action=f"Uploaded report analyzed: {report_name}",
+                status=AuditStatus.SUCCESS,
+                user_id=user_id,
+                resource_type="uploaded_report",
+                resource_id=report_path,
+                details={
+                    "report_name": report_name,
+                    "score": score,
+                    "classification": classification,
+                    "status_color": status,
+                    "stored_procedures_count": features.get("stored_procedures", 0),
+                    "expressions_count": features.get("expressions", 0),
+                    "analysis_duration_ms": duration_ms,
+                    "analysis_id": analysis.id,
+                    "source": "file_upload",
+                },
+            )
+        except Exception as audit_error:
+            logger.warning("Failed to log analysis success audit event: %s", audit_error)
+
+        return AnalysisResult(
+            success=True,
+            message="Analysis completed successfully",
+            analysis_id=analysis.id,
+            task_id=task.task_id if task else None,
+            classification=classification,
+            score=score,
+            status=status,
+            features=features,
+            penalties=penalties,
+            todo_items=todo_items,
+        )
+
+    except Exception as e:
+        logger.exception("Error analyzing uploaded report %s: %s", report_name, str(e))
+        if task:
+            update_task_progress(
+                db, task, "failed", 0, "Analysis failed",
+                error_message=str(e)
+            )
+
+        # Log failed analysis to audit trail (non-blocking)
+        try:
+            audit_service = get_audit_service()
+            audit_service.log_event_sync(
+                db=db,
+                event_type=EventType.ANALYSIS,
+                action=f"Uploaded report analysis failed: {report_name}",
+                status=AuditStatus.FAILURE,
+                user_id=user_id,
+                resource_type="uploaded_report",
+                resource_id=report_path,
+                details={
+                    "report_name": report_name,
+                    "error_code": "ANALYSIS_ERROR",
+                    "error_message": str(e),
+                    "source": "file_upload",
+                },
+            )
+        except Exception as audit_error:
+            logger.warning("Failed to log analysis failure audit event: %s", audit_error)
+
+        return AnalysisResult(
+            success=False,
+            message=f"Analysis failed: {str(e)}",
+            error_code="ANALYSIS_ERROR",
+            suggestions=["Check if the RDL file is valid", "Ensure the file is a valid SSRS report definition"],
+        )
+
+
 def analyze_report(
     db: Session,
     report_path: str,

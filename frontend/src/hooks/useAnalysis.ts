@@ -237,3 +237,97 @@ export function getAnalysisErrorMessage(error: unknown): string {
   }
   return 'Unable to load analysis. Please try again.'
 }
+
+/**
+ * Hook to upload and analyze an RDL file
+ */
+export function useUploadRDL() {
+  const queryClient = useQueryClient()
+  const [taskId, setTaskId] = useState<string | null>(null)
+  const [isPolling, setIsPolling] = useState(false)
+
+  // Task status query - enabled when we have a task ID
+  const {
+    data: taskStatus,
+    error: taskError,
+  } = useTaskStatus(taskId, isPolling)
+
+  // Stop polling when task completes
+  useEffect(() => {
+    if (taskStatus && ['completed', 'failed', 'cancelled'].includes(taskStatus.status)) {
+      setIsPolling(false)
+
+      // Invalidate the analysis cache when completed
+      if (taskStatus.status === 'completed') {
+        queryClient.invalidateQueries({ queryKey: ANALYSIS_QUERY_KEY })
+      }
+    }
+  }, [taskStatus, queryClient])
+
+  // Mutation to upload and start analysis
+  const mutation = useMutation<AnalyzeResponse, AxiosError<{ detail: ErrorDetail }>, { file: File; reportName?: string }>({
+    mutationFn: async ({ file, reportName }) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (reportName) {
+        formData.append('report_name', reportName)
+      }
+      const response = await api.post<AnalyzeResponse>('/api/v1/analysis/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+      return response.data
+    },
+    onSuccess: (data) => {
+      if (data.task_id && data.status !== 'cached') {
+        setTaskId(data.task_id)
+        setIsPolling(true)
+      }
+    },
+  })
+
+  // Reset function
+  const reset = useCallback(() => {
+    setTaskId(null)
+    setIsPolling(false)
+    mutation.reset()
+  }, [mutation])
+
+  // Combined state
+  const isUploading = mutation.isPending || isPolling
+  const progress = taskStatus?.progress ?? 0
+  const currentStep = taskStatus?.current_step ?? null
+  const analysisId = taskStatus?.analysis_id ?? null
+
+  // Determine final status
+  let status: 'idle' | 'uploading' | 'running' | 'completed' | 'failed' = 'idle'
+  if (mutation.isPending) {
+    status = 'uploading'
+  } else if (isPolling && taskStatus) {
+    status = taskStatus.status as typeof status
+  } else if (mutation.isError || taskError) {
+    status = 'failed'
+  } else if (taskStatus?.status === 'completed') {
+    status = 'completed'
+  }
+
+  // Error handling
+  const error = mutation.error || taskError
+  const errorMessage = error
+    ? (error.response?.data?.detail as ErrorDetail)?.message || error.message
+    : taskStatus?.error_message || null
+
+  return {
+    upload: mutation.mutate,
+    uploadAsync: mutation.mutateAsync,
+    reset,
+    isUploading,
+    status,
+    progress,
+    currentStep,
+    analysisId,
+    error: errorMessage,
+    taskId,
+  }
+}

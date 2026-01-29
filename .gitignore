@@ -89,3 +89,4 @@ temp/
 
 # BMAD artifacts (keep for development tracking)
 # _bmad-output/
+.vite/

@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from app.services.connection_config_service import (
 )
 from app.services.analysis_service import (
     analyze_report,
+    analyze_uploaded_rdl,
     get_latest_analysis,
     get_analysis_by_id,
     get_task_by_id,
@@ -256,6 +257,155 @@ async def initiate_analysis(
         status="pending",
         message="Analysis started",
         previous_analysis=previous_info,
+    )
+
+
+def _run_upload_analysis_task(
+    db_url: str,
+    task_id: str,
+    rdl_content: str,
+    report_name: str,
+    user_id: int | None,
+):
+    """Background task to run analysis on uploaded RDL.
+
+    This runs in a separate thread with its own database session.
+    """
+    from app.models.base import SessionLocal
+
+    db = SessionLocal()
+    try:
+        task = get_task_by_id(db, task_id)
+        if not task:
+            logger.error("Task not found: %s", task_id)
+            return
+
+        analyze_uploaded_rdl(
+            db=db,
+            rdl_content=rdl_content,
+            report_name=report_name,
+            user_id=user_id,
+            task=task,
+        )
+    except Exception as e:
+        logger.exception("Background upload analysis failed: %s", str(e))
+    finally:
+        db.close()
+
+
+@router.post(
+    "/upload",
+    response_model=AnalyzeResponse,
+    summary="Upload and analyze an RDL file",
+    responses={
+        400: {"description": "Invalid file or request"},
+        500: {"description": "Server error"},
+    },
+)
+async def upload_and_analyze(
+    background_tasks: BackgroundTasks,
+    current_user: Annotated[UserInfo, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    file: UploadFile = File(..., description="RDL file to analyze"),
+    report_name: str = Form(None, description="Custom report name (optional, defaults to filename)"),
+) -> AnalyzeResponse:
+    """Upload an RDL file and initiate analysis.
+
+    This endpoint:
+    1. Accepts an .rdl file upload
+    2. Validates the file is a valid XML/RDL
+    3. Creates an analysis task
+    4. Starts background analysis
+    5. Returns task ID for status polling
+
+    No SSRS connection required - works directly with the uploaded file.
+    """
+    # Validate file extension
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorDetail(
+                code="NO_FILENAME",
+                message="File must have a filename",
+            ).model_dump(),
+        )
+
+    if not file.filename.lower().endswith('.rdl'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorDetail(
+                code="INVALID_FILE_TYPE",
+                message="File must be an RDL file (.rdl extension)",
+                suggestions=["Upload a valid SSRS report definition file (.rdl)"],
+            ).model_dump(),
+        )
+
+    # Read file content
+    try:
+        content = await file.read()
+        rdl_content = content.decode('utf-8')
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorDetail(
+                code="INVALID_ENCODING",
+                message="File must be UTF-8 encoded",
+                suggestions=["Ensure the RDL file is saved with UTF-8 encoding"],
+            ).model_dump(),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorDetail(
+                code="FILE_READ_ERROR",
+                message=f"Failed to read file: {str(e)}",
+            ).model_dump(),
+        )
+
+    # Basic XML validation
+    if not rdl_content.strip().startswith('<?xml') and '<Report' not in rdl_content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorDetail(
+                code="INVALID_RDL",
+                message="File does not appear to be a valid RDL file",
+                suggestions=["Ensure the file is a valid SSRS report definition"],
+            ).model_dump(),
+        )
+
+    # Use provided name or extract from filename
+    if not report_name:
+        report_name = file.filename.rsplit('.', 1)[0]
+
+    logger.info(
+        "RDL upload by %s: %s (%d bytes)",
+        current_user.identity,
+        report_name,
+        len(content),
+    )
+
+    # Get user ID
+    user_id = _get_user_id(db, current_user.identity)
+
+    # Create analysis task
+    report_path = f"uploaded/{report_name}"
+    task = create_analysis_task(db, report_path, user_id)
+
+    # Start background analysis
+    background_tasks.add_task(
+        _run_upload_analysis_task,
+        str(db.get_bind().url),
+        task.task_id,
+        rdl_content,
+        report_name,
+        user_id,
+    )
+
+    return AnalyzeResponse(
+        task_id=task.task_id,
+        status="pending",
+        message="Analysis started for uploaded file",
+        previous_analysis=None,
     )
 
 
